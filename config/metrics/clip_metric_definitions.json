@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "dictionary_id": "clip_cost_efficiency",
+  "dictionary_name": "Clip成本效率指标字典",
+  "business_scope": "行车与泊车Clip月度成本效率",
+  "default_time_grain": "month",
+  "metrics": {
+    "monthly_total_cost": {
+      "name": "月度总成本",
+      "type": "base",
+      "description": "当月四项财务费用之和。",
+      "data_source": "data/synthetic/财务.csv",
+      "source_fields": [
+        "外包服务费(万)",
+        "车辆运维费(万)",
+        "硬盘邮寄(万)",
+        "场地测试(新增)(万)"
+      ],
+      "filters": {},
+      "formula": "外包服务费(万) + 车辆运维费(万) + 硬盘邮寄(万) + 场地测试(新增)(万)",
+      "unit": "万元",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "total_work_hours": {
+      "name": "总工时",
+      "type": "base",
+      "description": "当月日报表中所有行车和泊车记录的工作时长之和。",
+      "data_source": "data/synthetic/日报表.csv",
+      "source_fields": [
+        "日期",
+        "需求类型",
+        "工作时长"
+      ],
+      "filters": {
+        "需求类型": [
+          "行车",
+          "泊车"
+        ]
+      },
+      "aggregation": "sum(工作时长)",
+      "unit": "小时",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "driving_work_hours": {
+      "name": "行车工时",
+      "type": "base",
+      "description": "当月日报表中需求类型为行车的工作时长之和。",
+      "data_source": "data/synthetic/日报表.csv",
+      "source_fields": [
+        "日期",
+        "需求类型",
+        "工作时长"
+      ],
+      "filters": {
+        "需求类型": "行车"
+      },
+      "aggregation": "sum(工作时长)",
+      "unit": "小时",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_work_hours": {
+      "name": "泊车工时",
+      "type": "base",
+      "description": "当月日报表中需求类型为泊车的工作时长之和。",
+      "data_source": "data/synthetic/日报表.csv",
+      "source_fields": [
+        "日期",
+        "需求类型",
+        "工作时长"
+      ],
+      "filters": {
+        "需求类型": "泊车"
+      },
+      "aggregation": "sum(工作时长)",
+      "unit": "小时",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "driving_allocated_cost": {
+      "name": "行车分摊成本",
+      "type": "derived",
+      "description": "按照行车工时占总工时的比例分摊月度总成本。",
+      "depends_on": [
+        "monthly_total_cost",
+        "driving_work_hours",
+        "total_work_hours"
+      ],
+      "formula": "monthly_total_cost * driving_work_hours / total_work_hours",
+      "unit": "万元",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_allocated_cost": {
+      "name": "泊车分摊成本",
+      "type": "derived",
+      "description": "按照泊车工时占总工时的比例分摊月度总成本。",
+      "depends_on": [
+        "monthly_total_cost",
+        "parking_work_hours",
+        "total_work_hours"
+      ],
+      "formula": "monthly_total_cost * parking_work_hours / total_work_hours",
+      "unit": "万元",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "driving_clip_count": {
+      "name": "行车Clip数",
+      "type": "base",
+      "description": "当月main_clips中tripType为driving的记录数。",
+      "data_source": "data/synthetic/main_clips.csv",
+      "source_fields": [
+        "eventTime",
+        "tripType"
+      ],
+      "filters": {
+        "tripType": "driving"
+      },
+      "aggregation": "count(rows)",
+      "unit": "Clip",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_clip_count": {
+      "name": "泊车Clip数",
+      "type": "base",
+      "description": "当月main_clips中tripType为parking的记录数。",
+      "data_source": "data/synthetic/main_clips.csv",
+      "source_fields": [
+        "eventTime",
+        "tripType"
+      ],
+      "filters": {
+        "tripType": "parking"
+      },
+      "aggregation": "count(rows)",
+      "unit": "Clip",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "driving_clips_per_hour": {
+      "name": "行车每小时Clip数",
+      "type": "derived",
+      "description": "当月行车Clip数除以当月行车工时。",
+      "depends_on": [
+        "driving_clip_count",
+        "driving_work_hours"
+      ],
+      "formula": "driving_clip_count / driving_work_hours",
+      "unit": "Clip/小时",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_clips_per_hour": {
+      "name": "泊车每小时Clip数",
+      "type": "derived",
+      "description": "当月泊车Clip数除以当月泊车工时。",
+      "depends_on": [
+        "parking_clip_count",
+        "parking_work_hours"
+      ],
+      "formula": "parking_clip_count / parking_work_hours",
+      "unit": "Clip/小时",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "driving_unit_clip_cost": {
+      "name": "行车单Clip成本",
+      "type": "derived",
+      "description": "当月行车分摊成本除以当月行车Clip数，并将万元换算为元。",
+      "depends_on": [
+        "driving_allocated_cost",
+        "driving_clip_count"
+      ],
+      "formula": "driving_allocated_cost * 10000 / driving_clip_count",
+      "unit": "元/Clip",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_unit_clip_cost": {
+      "name": "泊车单Clip成本",
+      "type": "derived",
+      "description": "当月泊车分摊成本除以当月泊车Clip数，并将万元换算为元。",
+      "depends_on": [
+        "parking_allocated_cost",
+        "parking_clip_count"
+      ],
+      "formula": "parking_allocated_cost * 10000 / parking_clip_count",
+      "unit": "元/Clip",
+      "status": "confirmed",
+      "version": "1.0"
+    }
+  }
+}
