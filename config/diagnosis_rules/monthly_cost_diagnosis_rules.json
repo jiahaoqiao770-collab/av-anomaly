@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "diagnosis_rule_set_id": "monthly_clip_cost_diagnosis",
+  "description": "为异常规则标注诊断角色，由程序按月份和业务类型动态合并，不枚举规则组合。",
+  "grouping": ["period", "business_type"],
+  "severity_order": {
+    "warning": 1,
+    "critical": 2
+  },
+  "business_codes": {
+    "行车": "driving",
+    "泊车": "parking",
+    "整体": "overall"
+  },
+  "rule_roles": {
+    "A01": {
+      "role": "outcome",
+      "primary_priority": 100,
+      "fallback_primary": true
+    },
+    "A02": {
+      "role": "outcome",
+      "primary_priority": 100,
+      "fallback_primary": true
+    },
+    "A03": {
+      "role": "outcome",
+      "primary_priority": 80,
+      "fallback_primary": true
+    },
+    "A04": {
+      "role": "evidence",
+      "evidence_priority": 60,
+      "deduplication_key": "unit_cost_trend",
+      "fallback_primary": false
+    },
+    "A05": {
+      "role": "driver",
+      "reason_priority": 70,
+      "deduplication_key": "parking_efficiency_down",
+      "fallback_primary": true
+    },
+    "A06": {
+      "role": "driver",
+      "reason_priority": 70,
+      "deduplication_key": "driving_efficiency_down",
+      "fallback_primary": true
+    },
+    "A07": {
+      "role": "driver",
+      "reason_priority": 90,
+      "deduplication_key": "clip_count_down",
+      "fallback_primary": true
+    },
+    "A08": {
+      "role": "evidence",
+      "evidence_priority": 80,
+      "deduplication_key": "hours_up_clips_down",
+      "fallback_primary": false
+    },
+    "A09": {
+      "role": "evidence",
+      "evidence_priority": 80,
+      "deduplication_key": "hours_up_efficiency_down",
+      "fallback_primary": false
+    },
+    "A10": {
+      "role": "driver",
+      "reason_priority": 80,
+      "deduplication_key": "cost_output_growth_gap",
+      "fallback_primary": true
+    },
+    "A11": {
+      "role": "driver",
+      "reason_priority": 75,
+      "deduplication_key": "total_cost_up",
+      "attach_to_business": true,
+      "fallback_primary": true
+    },
+    "A13": {
+      "role": "context",
+      "context_priority": 60,
+      "deduplication_key": "parking_hours_share_change",
+      "attach_to_business": true,
+      "fallback_primary": true
+    },
+    "A14": {
+      "role": "context",
+      "context_priority": 50,
+      "deduplication_key": "business_cost_ratio_up",
+      "attach_to_business": true,
+      "fallback_primary": true
+    }
+  }
+}
