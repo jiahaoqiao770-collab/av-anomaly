@@ -37,12 +37,23 @@ MAPPING_FILES = {
 }
 
 CSV_COLUMNS = [
-    "id", "fileName", "eventTime", "tags", "status", "tripType",
-    "vin", "carId", "carName", "createTime", "updateTime",
+    "id", "fileName", "eventTime", "tripType",
+    "collectionStatus", "parkingLotType",
+    "status", "vin", "carId", "carName",
+    "createTime", "updateTime",
     "triggerName", "tripName", "fileSize", "srcCtime", "srcEtime",
     "duration", "platform", "srcPath", "srcBucket", "unpackPath",
-    "unpackBucket", "tagsMap", "voiceTagsList",
-    "realCarTagsList", "imgUrl",
+    "unpackBucket", "imgUrl",
+]
+
+PARKING_LOT_TYPES = [
+    "住宅小区停车场",
+    "商场停车场",
+    "公司园区停车场",
+    "公共设施停车场",
+    "高速服务区停车场",
+    "路边临时停车",
+    "破烂路面临时停车场",
 ]
 
 BUCKET = "private-gwm-dp-inner-1377196348"
@@ -454,9 +465,11 @@ def build_row(
     local_time: datetime,
     car_id: str,
     trip_type: str,
-    groups: dict[str, object],
+    groups: dict[str, object],  # 暂时保留：tag 体系下线后删除
     rng: random.Random,
+    collection_status: str = "正式采集",
 ) -> dict[str, object]:
+
     utc_time = local_time - timedelta(hours=8)
     file_name = (
         f"{car_id}_{utc_time:%Y%m%d_%H%M%S}.All.bag.des"
@@ -474,25 +487,24 @@ def build_row(
         minutes=rng.randint(0, 2 * 24 * 60)
     )
 
-    tags = build_tags(
-        trip_type=trip_type,
-        local_time=local_time,
-        groups=groups,
-        rng=rng,
-    )
-    tag_keys = [str(tag.tag_index) for tag in tags]
-
+    
     utc_date = utc_time.strftime("%Y%m%d")
     utc_hour = utc_time.strftime("%H")
     utc_minute = utc_time.strftime("%M")
+    parking_lot_type = (
+    rng.choice(PARKING_LOT_TYPES) if trip_type == "parking" else ""
+    )
 
     return {
         "id": row_id,
         "fileName": file_name,
         "eventTime": format_local_time(local_time),
-        "tags": "'" + ",".join(tag_keys),
-        "status": "",
         "tripType": trip_type,
+        "collectionStatus": collection_status,
+        "parkingLotType": (
+            rng.choice(PARKING_LOT_TYPES) if trip_type == "parking" else ""
+        ),
+        "status": "",
         "vin": "",
         "carId": car_id,
         "carName": "",
@@ -515,9 +527,6 @@ def build_row(
             f"{car_id}/21/{car_id}_{utc_time:%Y%m%d_%H%M%S}"
         ),
         "unpackBucket": BUCKET,
-        "tagsMap": tags_to_json(tags),
-        "voiceTagsList": "",
-        "realCarTagsList": "",
         "imgUrl": "",
     }
 
@@ -615,44 +624,15 @@ def validate_rows(
         assert expected_path_part in str(row["srcPath"])
         assert str(row["srcPath"]).endswith(str(row["fileName"]))
 
-        tags_map = json.loads(str(row["tagsMap"]))
-        assert "\n" not in str(row["tagsMap"])
-        assert "\r" not in str(row["tagsMap"])
-
-        expected_tags = "'" + ",".join(tags_map.keys())
-        assert row["tags"] == expected_tags
-
-        collection_status_count = 0
-        indoor_outdoor_count = 0
-        day_night_count = 0
-        quality_count = 0
-
-        for key, value in tags_map.items():
-            tag_id = int(key)
-
-            assert tag_id == value["tagIndex"]
-            assert tag_id in dictionary
-
-            source = dictionary[tag_id]
-            assert value["tag1Cn"] == source.tag1_cn
-            assert value["tag2Cn"] == source.tag2_cn
-            assert value["tag3Cn"] == source.tag3_cn
-            assert value["tag4Cn"] == source.tag4_cn
-            assert value["tag5Cn"] == source.tag5_cn
-
-            if value["tag1Cn"] == "采集状态":
-                collection_status_count += 1
-            if source.leaf_cn in {"室内停车场", "室外停车场"}:
-                indoor_outdoor_count += 1
-            if source.leaf_cn in {"白天", "黑夜"}:
-                day_night_count += 1
-            if value["tag1Cn"] == "质检标签":
-                quality_count += 1
-
-        assert collection_status_count == 1
-        assert indoor_outdoor_count <= 1
-        assert day_night_count == 1
-        assert quality_count <= 3
+        assert row["collectionStatus"] in {"正式采集", "试采"}, (
+            f"collectionStatus 取值非法：{row['collectionStatus']}"
+        )
+        if row["tripType"] == "parking":
+            assert row["parkingLotType"] in PARKING_LOT_TYPES, (
+                f"parkingLotType 取值非法：{row['parkingLotType']}"
+            )
+        else:
+            assert row["parkingLotType"] == "", "行车行不应有停车场类型"
 
         month_key = f"{local_time.year}-{local_time.month:02d}"
         month_actual[month_key] = month_actual.get(month_key, 0) + 1

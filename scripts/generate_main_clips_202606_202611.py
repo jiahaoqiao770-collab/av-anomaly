@@ -34,44 +34,6 @@ MONTHLY_COUNTS = {
 
 OUTPUT_PATH = base.OUTPUT_DIR / "main_clips_202606_202611.csv"
 
-# 16681 来自真实 main_clips 样例；16682 是本项目专用的合成扩展标签。
-TRIAL_TAG = base.Tag(
-    tag_index=16682,
-    tag1_cn="采集状态",
-    tag1_en="collection_status",
-    tag2_cn="试采",
-    tag2_en="Trial_collect",
-    tag3_cn=None,
-    tag3_en=None,
-    tag4_cn=None,
-    tag4_en=None,
-    tag5_cn=None,
-    tag5_en=None,
-    tag_type=4,
-    source="本项目合成扩展标签",
-)
-
-
-def replace_official_with_trial(row: dict[str, object]) -> None:
-    """把一行中的正式采集 16681 替换成试采 16682。"""
-    tags_map = json.loads(str(row["tagsMap"]))
-    replaced: dict[str, dict] = {}
-
-    for key, value in tags_map.items():
-        if key == "16681":
-            replaced["16682"] = TRIAL_TAG.as_tags_map_value()
-        else:
-            replaced[key] = value
-
-    if "16682" not in replaced:
-        raise AssertionError("该行没有找到可替换的正式采集标签 16681")
-
-    row["tagsMap"] = json.dumps(
-        replaced,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    row["tags"] = "'" + ",".join(replaced.keys())
 
 
 def make_exact_flags(
@@ -93,11 +55,6 @@ def generate_rows() -> tuple[
     rng = random.Random(SEED)
 
     dictionary, tags = base.load_dictionary()
-    if TRIAL_TAG.tag_index in dictionary:
-        raise ValueError(f"标签 ID {TRIAL_TAG.tag_index} 已在映射表中存在")
-
-    dictionary[TRIAL_TAG.tag_index] = TRIAL_TAG
-    tags.append(TRIAL_TAG)
     groups = base.prepare_tag_groups(tags)
 
     # 先只生成时间和车辆，tripType 与采集状态再按精确比例分配。
@@ -138,11 +95,9 @@ def generate_rows() -> tuple[
             trip_type=trip_type,
             groups=groups,
             rng=rng,
+            collection_status="试采" if is_trial else "正式采集",
         )
-        if is_trial:
-            replace_official_with_trial(row)
         rows.append(row)
-
     return rows, dictionary
 
 
@@ -158,11 +113,10 @@ def validate_exact_distribution(
     status_counts: Counter[str] = Counter()
 
     for row in rows:
-        tags_map = json.loads(str(row["tagsMap"]))
-        if "16681" in tags_map:
-            status_counts["official"] += 1
-        if "16682" in tags_map:
+        if row["collectionStatus"] == "试采":
             status_counts["trial"] += 1
+        else:
+            status_counts["official"] += 1
 
     assert len(rows) == total
     assert trip_counts["parking"] == expected_parking

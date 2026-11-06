@@ -78,7 +78,7 @@ def load_groups() -> list[Group]:
     groups: dict[tuple[str, str, str], Group] = {}
     with INPUT_PATH.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
-        required = {"eventTime", "carId", "tripType", "tagsMap"}
+        required = {"eventTime", "carId", "tripType"}
         missing = required.difference(reader.fieldnames or [])
         if missing:
             raise ValueError(f"Clip 缺少字段：{sorted(missing)}")
@@ -103,10 +103,7 @@ def load_groups() -> list[Group]:
             group.first_event = min(group.first_event or event, event)
             group.last_event = max(group.last_event or event, event)
 
-            tags_map = json.loads(row["tagsMap"])
-            for tag in tags_map.values():
-                if tag.get("tag1Cn") == "质检标签":
-                    group.anomaly_names.add(leaf_name(tag))
+            
 
     return sorted(
         groups.values(),
@@ -151,7 +148,7 @@ def make_row(group: Group, profile: dict, rng: random.Random) -> dict:
     effective_distance = round(distance * rng.uniform(0.72, 0.95), 1)
 
     province_city_district, city, location = profile["location"]
-    has_anomaly = bool(group.anomaly_names)
+    has_anomaly = False
     task_type = "泊车" if group.trip_type == "parking" else rng.choice(
         ["导航组", "专项采集", "常规采集"]
     )
