@@ -1,0 +1,202 @@
+{
+  "schema_version": "1.0",
+  "rule_set_id": "clip_cost_efficiency_monthly",
+  "rule_set_name": "Clip成本效率月度异常规则",
+  "comparison": "previous_month",
+  "calibration": {
+    "source": "data/processed/monthly_clip_cost_metrics.csv",
+    "periods": "2026-06至2026-11",
+    "note": "基于6个月合成数据设定的初始阈值，新增月份后应重新校准。"
+  },
+  "rules": [
+    {
+      "rule_id": "A01",
+      "name": "泊车单Clip成本环比上涨",
+      "kind": "mom_increase",
+      "metric": "parking_unit_clip_cost",
+      "business_type": "泊车",
+      "warning_threshold": 0.10,
+      "critical_threshold": 0.30,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A02",
+      "name": "行车单Clip成本环比上涨",
+      "kind": "mom_increase",
+      "metric": "driving_unit_clip_cost",
+      "business_type": "行车",
+      "warning_threshold": 0.10,
+      "critical_threshold": 0.30,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A03",
+      "name": "单Clip成本超过绝对上限",
+      "kind": "absolute_high",
+      "targets": [
+        {
+          "metric": "driving_unit_clip_cost",
+          "business_type": "行车",
+          "warning_threshold": 1100.0,
+          "critical_threshold": 1200.0
+        },
+        {
+          "metric": "parking_unit_clip_cost",
+          "business_type": "泊车",
+          "warning_threshold": 250.0,
+          "critical_threshold": 275.0
+        }
+      ],
+      "unit": "元/Clip",
+      "enabled": true
+    },
+    {
+      "rule_id": "A04",
+      "name": "单Clip成本连续上涨",
+      "kind": "consecutive_increase",
+      "targets": [
+        {"metric": "driving_unit_clip_cost", "business_type": "行车"},
+        {"metric": "parking_unit_clip_cost", "business_type": "泊车"}
+      ],
+      "warning_periods": 2,
+      "critical_periods": 3,
+      "unit": "months",
+      "enabled": true
+    },
+    {
+      "rule_id": "A05",
+      "name": "泊车每小时Clip数环比下降",
+      "kind": "mom_decrease",
+      "metric": "parking_clips_per_hour",
+      "business_type": "泊车",
+      "warning_threshold": 0.05,
+      "critical_threshold": 0.15,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A06",
+      "name": "行车每小时Clip数环比下降",
+      "kind": "mom_decrease",
+      "metric": "driving_clips_per_hour",
+      "business_type": "行车",
+      "warning_threshold": 0.05,
+      "critical_threshold": 0.15,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A07",
+      "name": "Clip数环比下降",
+      "kind": "mom_decrease",
+      "targets": [
+        {"metric": "driving_clip_count", "business_type": "行车"},
+        {"metric": "parking_clip_count", "business_type": "泊车"}
+      ],
+      "warning_threshold": 0.05,
+      "critical_threshold": 0.20,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A08",
+      "name": "工时上涨但Clip数下降",
+      "kind": "hours_up_clips_down",
+      "targets": [
+        {
+          "business_type": "行车",
+          "hours_metric": "driving_work_hours",
+          "clip_metric": "driving_clip_count"
+        },
+        {
+          "business_type": "泊车",
+          "hours_metric": "parking_work_hours",
+          "clip_metric": "parking_clip_count"
+        }
+      ],
+      "warning": {"hours_increase": 0.02, "clip_decrease": 0.03},
+      "critical": {"hours_increase": 0.03, "clip_decrease": 0.20},
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A09",
+      "name": "工时上涨但每小时Clip数下降",
+      "kind": "hours_up_efficiency_down",
+      "targets": [
+        {
+          "business_type": "行车",
+          "hours_metric": "driving_work_hours",
+          "efficiency_metric": "driving_clips_per_hour"
+        },
+        {
+          "business_type": "泊车",
+          "hours_metric": "parking_work_hours",
+          "efficiency_metric": "parking_clips_per_hour"
+        }
+      ],
+      "warning": {"hours_increase": 0.02, "efficiency_decrease": 0.05},
+      "critical": {"hours_increase": 0.03, "efficiency_decrease": 0.15},
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A10",
+      "name": "分摊成本增幅超过Clip数增幅",
+      "kind": "growth_spread",
+      "targets": [
+        {
+          "business_type": "行车",
+          "cost_metric": "driving_allocated_cost",
+          "clip_metric": "driving_clip_count"
+        },
+        {
+          "business_type": "泊车",
+          "cost_metric": "parking_allocated_cost",
+          "clip_metric": "parking_clip_count"
+        }
+      ],
+      "warning_threshold": 0.10,
+      "critical_threshold": 0.30,
+      "unit": "percentage_point",
+      "enabled": true
+    },
+    {
+      "rule_id": "A11",
+      "name": "月度总成本环比上涨",
+      "kind": "mom_increase",
+      "metric": "monthly_total_cost",
+      "business_type": "整体",
+      "warning_threshold": 0.10,
+      "critical_threshold": 0.20,
+      "unit": "ratio",
+      "enabled": true
+    },
+    {
+      "rule_id": "A13",
+      "name": "泊车工时占比变化",
+      "kind": "share_change",
+      "numerator_metric": "parking_work_hours",
+      "denominator_metric": "total_work_hours",
+      "business_type": "整体",
+      "warning_threshold": 0.015,
+      "critical_threshold": 0.03,
+      "unit": "percentage_point",
+      "enabled": true
+    },
+    {
+      "rule_id": "A14",
+      "name": "行车与泊车单Clip成本比值扩大",
+      "kind": "ratio_mom_increase",
+      "numerator_metric": "driving_unit_clip_cost",
+      "denominator_metric": "parking_unit_clip_cost",
+      "business_type": "整体",
+      "warning_threshold": 0.08,
+      "critical_threshold": 0.15,
+      "unit": "ratio",
+      "enabled": true
+    }
+  ]
+}
