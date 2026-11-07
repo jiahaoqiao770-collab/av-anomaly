@@ -192,6 +192,44 @@
       "unit": "元/Clip",
       "status": "confirmed",
       "version": "1.0"
+    },
+      "parking_trial_clip_count": {
+      "name": "泊车试采Clip数",
+      "type": "base",
+      "description": "当月main_clips中tripType为parking且collectionStatus为试采的记录数。试采Clip不进入交付，但仍产生成本。",
+      "data_source": "data/synthetic/main_clips_202606_202611.csv",
+      "source_fields": ["eventTime", "tripType", "collectionStatus"],
+      "filters": {"tripType": "parking", "collectionStatus": "试采"},
+      "aggregation": "count(rows)",
+      "unit": "Clip",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_trial_clip_ratio": {
+      "name": "泊车试采占比",
+      "type": "derived",
+      "description": "当月泊车试采Clip数占泊车Clip总数的比例。",
+      "depends_on": ["parking_trial_clip_count", "parking_clip_count"],
+      "formula": "parking_trial_clip_count / parking_clip_count",
+      "unit": "ratio",
+      "status": "confirmed",
+      "version": "1.0"
+    },
+    "parking_effective_unit_cost": {
+      "name": "泊车有效单Clip成本",
+      "type": "derived",
+      "description": "泊车分摊成本除以正式采集（非试采）泊车Clip数，剔除试采带来的无效成本。",
+      "depends_on": [
+        "parking_allocated_cost",
+        "parking_clip_count",
+        "parking_trial_clip_count"
+      ],
+      "formula": "parking_allocated_cost * 10000 / (parking_clip_count - parking_trial_clip_count)",
+      "unit": "元/Clip",
+      "status": "confirmed",
+      "version": "1.0"
     }
+
+
   }
 }

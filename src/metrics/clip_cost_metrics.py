@@ -36,6 +36,9 @@ METRIC_COLUMNS = [
     "parking_clips_per_hour",
     "driving_unit_clip_cost",
     "parking_unit_clip_cost",
+    "parking_trial_clip_count",
+    "parking_trial_clip_ratio",
+    "parking_effective_unit_cost",
 ]
 
 OUTPUT_COLUMN_NAMES = {
@@ -52,6 +55,9 @@ OUTPUT_COLUMN_NAMES = {
     "parking_clips_per_hour": "泊车每小时Clip数",
     "driving_unit_clip_cost": "行车单Clip成本_元",
     "parking_unit_clip_cost": "泊车单Clip成本_元",
+    "parking_trial_clip_count": "泊车试采Clip数",
+    "parking_trial_clip_ratio": "泊车试采占比",
+    "parking_effective_unit_cost": "泊车有效单Clip成本_元",
 }
 
 
@@ -184,10 +190,11 @@ def calculate_monthly_clip_counts(
                     || '-'
                     || lpad(split_part(eventTime, '/', 2), 2, '0') AS month,
                 lower(trim(tripType)) AS trip_type,
+                trim(collectionStatus) AS collection_status,
                 count(*) AS clip_count
             FROM read_csv(?, header = true, all_varchar = true)
-            GROUP BY 1, 2
-            ORDER BY 1, 2
+            GROUP BY 1, 2, 3
+            ORDER BY 1, 2, 3
             """,
             [str(main_clips_path)],
         ).df()
@@ -197,21 +204,48 @@ def calculate_monthly_clip_counts(
     if frame.empty:
         raise MetricDataError(f"{main_clips_path} 没有可用的 Clip 记录")
 
-    allowed = {"driving", "parking"}
-    actual = set(frame["trip_type"].dropna())
-    invalid = sorted(actual.difference(allowed))
-    if invalid or frame["trip_type"].isna().any():
-        raise MetricDataError(f"{main_clips_path} 存在未定义的 tripType：{invalid}")
+    allowed_trip = {"driving", "parking"}
+    actual_trip = set(frame["trip_type"].dropna())
+    invalid_trip = sorted(actual_trip.difference(allowed_trip))
+    if invalid_trip or frame["trip_type"].isna().any():
+        raise MetricDataError(
+            f"{main_clips_path} 存在未定义的 tripType：{invalid_trip}"
+        )
 
+    allowed_status = {"正式采集", "试采"}
+    actual_status = set(frame["collection_status"].dropna())
+    invalid_status = sorted(actual_status.difference(allowed_status))
+    if invalid_status or frame["collection_status"].isna().any():
+        raise MetricDataError(
+            f"{main_clips_path} 存在未定义的 collectionStatus：{invalid_status}"
+        )
+
+    frame["bucket"] = frame["trip_type"] + "|" + frame["collection_status"]
     pivot = frame.pivot(
-        index="month", columns="trip_type", values="clip_count"
+        index="month", columns="bucket", values="clip_count"
     )
-    pivot = pivot.reindex(columns=["driving", "parking"], fill_value=0)
-    pivot = pivot.fillna(0).astype("int64")
+    pivot = pivot.reindex(
+        columns=[
+            "driving|正式采集",
+            "driving|试采",
+            "parking|正式采集",
+            "parking|试采",
+        ],
+        fill_value=0,
+    ).fillna(0).astype("int64")
     pivot.columns.name = None
+    pivot.index.name = "month"
 
-    result = pivot.reset_index()
-    result.columns = ["month", "driving_clip_count", "parking_clip_count"]
+    result = pd.DataFrame(
+        {
+            "driving_clip_count": pivot["driving|正式采集"]
+            + pivot["driving|试采"],
+            "parking_clip_count": pivot["parking|正式采集"]
+            + pivot["parking|试采"],
+            "parking_trial_clip_count": pivot["parking|试采"],
+        }
+    ).reset_index()
+
     return result.sort_values("month").reset_index(drop=True)
 
 
@@ -264,6 +298,18 @@ def calculate_derived_metrics(base_metrics: pd.DataFrame) -> pd.DataFrame:
     )
     result["parking_unit_clip_cost"] = (
         result["parking_allocated_cost"] * 10_000 / result["parking_clip_count"]
+    )
+    official_parking_clips = (
+        result["parking_clip_count"] - result["parking_trial_clip_count"]
+    )
+    if (official_parking_clips <= 0).any():
+        raise MetricDataError("正式采集泊车Clip数必须大于0，无法计算有效成本")
+
+    result["parking_trial_clip_ratio"] = (
+        result["parking_trial_clip_count"] / result["parking_clip_count"]
+    )
+    result["parking_effective_unit_cost"] = (
+        result["parking_allocated_cost"] * 10_000 / official_parking_clips
     )
     return result[["month", *METRIC_COLUMNS]]
 
@@ -379,13 +425,22 @@ def format_metrics_for_output(metrics: pd.DataFrame) -> pd.DataFrame:
         "driving_allocated_cost",
         "parking_allocated_cost",
     ]
-    unit_cost_columns = ["driving_unit_clip_cost", "parking_unit_clip_cost"]
+    unit_cost_columns = [
+        "driving_unit_clip_cost",
+        "parking_unit_clip_cost",
+        "parking_effective_unit_cost",
+    ]
     efficiency_columns = ["driving_clips_per_hour", "parking_clips_per_hour"]
-    count_columns = ["driving_clip_count", "parking_clip_count"]
+    count_columns = [
+        "driving_clip_count",
+        "parking_clip_count",
+        "parking_trial_clip_count",
+    ]
 
     output[hour_columns] = output[hour_columns].round(1)
     output[cost_columns] = output[cost_columns].round(4)
     output[efficiency_columns] = output[efficiency_columns].round(4)
+    output["parking_trial_clip_ratio"] = output["parking_trial_clip_ratio"].round(4)
     output[unit_cost_columns] = output[unit_cost_columns].round(2)
     output[count_columns] = output[count_columns].astype("int64")
     return output.rename(columns=OUTPUT_COLUMN_NAMES)
