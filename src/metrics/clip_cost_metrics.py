@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import duckdb
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FINANCE_PATH = PROJECT_ROOT / "data/synthetic/财务.csv"
 DEFAULT_DAILY_REPORT_PATH = PROJECT_ROOT / "data/synthetic/日报表.csv"
-DEFAULT_MAIN_CLIPS_PATH = PROJECT_ROOT / "data/synthetic/main_clips.csv"
+DEFAULT_MAIN_CLIPS_PATH = PROJECT_ROOT / "data/synthetic/main_clips_202606_202611.csv"
 DEFAULT_DICTIONARY_PATH = PROJECT_ROOT / "config/metrics/clip_metric_definitions.json"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "data/processed/monthly_clip_cost_metrics.csv"
 
@@ -169,30 +170,49 @@ def calculate_monthly_work_hours(
 
 
 def calculate_monthly_clip_counts(
-    main_clips: pd.DataFrame,
-    source: Path = DEFAULT_MAIN_CLIPS_PATH,
+    main_clips_path: Path = DEFAULT_MAIN_CLIPS_PATH,
 ) -> pd.DataFrame:
-    required = {"eventTime", "tripType"}
-    _require_columns(main_clips, required, source)
+    if not main_clips_path.exists():
+        raise FileNotFoundError(f"找不到输入文件：{main_clips_path}")
 
-    prepared = main_clips.loc[:, ["eventTime", "tripType"]].copy()
-    prepared["month"] = _parse_month(prepared["eventTime"], "eventTime", source)
-    prepared["tripType"] = prepared["tripType"].astype("string").str.strip().str.lower()
+    connection = duckdb.connect()
+    try:
+        frame = connection.execute(
+            """
+            SELECT
+                substr(eventTime, 1, 4)
+                    || '-'
+                    || lpad(split_part(eventTime, '/', 2), 2, '0') AS month,
+                lower(trim(tripType)) AS trip_type,
+                count(*) AS clip_count
+            FROM read_csv(?, header = true, all_varchar = true)
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+            """,
+            [str(main_clips_path)],
+        ).df()
+    finally:
+        connection.close()
+
+    if frame.empty:
+        raise MetricDataError(f"{main_clips_path} 没有可用的 Clip 记录")
 
     allowed = {"driving", "parking"}
-    actual = set(prepared["tripType"].dropna())
+    actual = set(frame["trip_type"].dropna())
     invalid = sorted(actual.difference(allowed))
-    if invalid or prepared["tripType"].isna().any():
-        raise MetricDataError(f"{source} 存在未定义的 tripType：{invalid}")
+    if invalid or frame["trip_type"].isna().any():
+        raise MetricDataError(f"{main_clips_path} 存在未定义的 tripType：{invalid}")
 
-    pivot = prepared.groupby(["month", "tripType"]).size().unstack(fill_value=0)
+    pivot = frame.pivot(
+        index="month", columns="trip_type", values="clip_count"
+    )
     pivot = pivot.reindex(columns=["driving", "parking"], fill_value=0)
-    result = pivot.rename(
-        columns={"driving": "driving_clip_count", "parking": "parking_clip_count"}
-    ).reset_index()
-    return result[
-        ["month", "driving_clip_count", "parking_clip_count"]
-    ].sort_values("month").reset_index(drop=True)
+    pivot = pivot.fillna(0).astype("int64")
+    pivot.columns.name = None
+
+    result = pivot.reset_index()
+    result.columns = ["month", "driving_clip_count", "parking_clip_count"]
+    return result.sort_values("month").reset_index(drop=True)
 
 
 def combine_monthly_base_metrics(
@@ -301,11 +321,10 @@ def calculate_monthly_metrics(
     load_metric_dictionary(dictionary_path)
     finance = _read_csv(finance_path)
     daily_report = _read_csv(daily_report_path)
-    main_clips = _read_csv(main_clips_path)
 
     costs = calculate_monthly_total_cost(finance, finance_path)
     work_hours = calculate_monthly_work_hours(daily_report, daily_report_path)
-    clip_counts = calculate_monthly_clip_counts(main_clips, main_clips_path)
+    clip_counts = calculate_monthly_clip_counts(main_clips_path)
     base_metrics = combine_monthly_base_metrics(costs, work_hours, clip_counts)
     metrics = calculate_derived_metrics(base_metrics)
     validate_monthly_metrics(metrics)

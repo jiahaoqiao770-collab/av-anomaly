@@ -222,9 +222,15 @@ def validate(rows: list[dict], groups: list[Group]) -> None:
         if driving_count != (expected[key] if trip_type == "driving" else 0):
             raise AssertionError(f"行车数量对账失败：{key}")
 
-    if sum(int(r["泊车次数（泊车）"]) for r in rows) != 30_787:
+    parking_expected = sum(
+        g.clip_count for g in groups if g.trip_type == "parking"
+    )
+    driving_expected = sum(
+        g.clip_count for g in groups if g.trip_type == "driving"
+    )
+    if sum(int(r["泊车次数（泊车）"]) for r in rows) != parking_expected:
         raise AssertionError("泊车总数未与 Clip 总数一致")
-    if sum(int(r["当日标签总数（行车）"]) for r in rows) != 5_433:
+    if sum(int(r["当日标签总数（行车）"]) for r in rows) != driving_expected:
         raise AssertionError("行车总数未与 Clip 总数一致")
 
 
@@ -243,7 +249,9 @@ def main() -> None:
     print(f"输入 Clip：{INPUT_PATH}")
     print(f"输出日报：{OUTPUT_PATH}")
     print(f"日报行数：{len(rows)}")
-    print("全量对账：parking=30787，driving=5433")
+    parking_total = sum(int(r["泊车次数（泊车）"]) for r in rows)
+    driving_total = sum(int(r["当日标签总数（行车）"]) for r in rows)
+    print(f"全量对账：parking={parking_total}，driving={driving_total}")
     print("需求类型：仅使用 泊车 / 行车")
     print("有效采集时长：每行 4.0~6.0 小时")
 

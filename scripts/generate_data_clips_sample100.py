@@ -576,6 +576,54 @@ def parse_event_time(value: str) -> datetime:
     return datetime.strptime(value, "%Y/%m/%d %H:%M")
 
 
+def check_row(row: dict[str, object]) -> None:
+    """单行校验：字段顺序、命名、时间、路径、两列取值。"""
+    assert list(row.keys()) == CSV_COLUMNS
+    assert row["status"] == ""
+    assert row["vin"] == ""
+    assert row["carName"] == ""
+    assert row["duration"] == 60
+    assert row["platform"] == PLATFORM
+    assert row["srcBucket"] == BUCKET
+    assert row["unpackBucket"] == BUCKET
+    assert 6_400_000_000 <= int(row["fileSize"]) <= 7_200_000_000
+
+    file_match = re.fullmatch(
+        r"(YR-[A-Z0-9]{3}-\d{5})_"
+        r"(\d{8})_(\d{6})\.All\.bag\.des",
+        str(row["fileName"]),
+    )
+    assert file_match, f"fileName 格式错误：{row['fileName']}"
+    assert file_match.group(1) == row["carId"]
+
+    utc_time = datetime.strptime(
+        file_match.group(2) + file_match.group(3),
+        "%Y%m%d%H%M%S",
+    )
+    local_time = parse_event_time(str(row["eventTime"]))
+
+    # eventTime 不保存秒，因此比较到分钟。
+    assert (
+        utc_time + timedelta(hours=8)
+    ).replace(second=0) == local_time
+
+    expected_path_part = (
+        f"/{utc_time:%Y%m%d}/{utc_time:%H}/{utc_time:%M}/"
+    )
+    assert expected_path_part in str(row["srcPath"])
+    assert str(row["srcPath"]).endswith(str(row["fileName"]))
+
+    assert row["collectionStatus"] in {"正式采集", "试采"}, (
+        f"collectionStatus 取值非法：{row['collectionStatus']}"
+    )
+    if row["tripType"] == "parking":
+        assert row["parkingLotType"] in PARKING_LOT_TYPES, (
+            f"parkingLotType 取值非法：{row['parkingLotType']}"
+        )
+    else:
+        assert row["parkingLotType"] == "", "行车行不应有停车场类型"
+
+
 def validate_rows(
     rows: list[dict[str, object]],
     monthly_counts: dict[str, int],
@@ -589,54 +637,10 @@ def validate_rows(
     parking_count = 0
 
     for row in rows:
-        assert list(row.keys()) == CSV_COLUMNS
-        assert row["status"] == ""
-        assert row["vin"] == ""
-        assert row["carName"] == ""
-        assert row["duration"] == 60
-        assert row["platform"] == PLATFORM
-        assert row["srcBucket"] == BUCKET
-        assert row["unpackBucket"] == BUCKET
-        assert 6_400_000_000 <= int(row["fileSize"]) <= 7_200_000_000
-
-        file_match = re.fullmatch(
-            r"(YR-[A-Z0-9]{3}-\d{5})_"
-            r"(\d{8})_(\d{6})\.All\.bag\.des",
-            str(row["fileName"]),
-        )
-        assert file_match, f"fileName 格式错误：{row['fileName']}"
-        assert file_match.group(1) == row["carId"]
-
-        utc_time = datetime.strptime(
-            file_match.group(2) + file_match.group(3),
-            "%Y%m%d%H%M%S",
-        )
+        check_row(row)
         local_time = parse_event_time(str(row["eventTime"]))
-
-        # eventTime 不保存秒，因此比较到分钟。
-        assert (
-            utc_time + timedelta(hours=8)
-        ).replace(second=0) == local_time
-
-        expected_path_part = (
-            f"/{utc_time:%Y%m%d}/{utc_time:%H}/{utc_time:%M}/"
-        )
-        assert expected_path_part in str(row["srcPath"])
-        assert str(row["srcPath"]).endswith(str(row["fileName"]))
-
-        assert row["collectionStatus"] in {"正式采集", "试采"}, (
-            f"collectionStatus 取值非法：{row['collectionStatus']}"
-        )
-        if row["tripType"] == "parking":
-            assert row["parkingLotType"] in PARKING_LOT_TYPES, (
-                f"parkingLotType 取值非法：{row['parkingLotType']}"
-            )
-        else:
-            assert row["parkingLotType"] == "", "行车行不应有停车场类型"
-
         month_key = f"{local_time.year}-{local_time.month:02d}"
         month_actual[month_key] = month_actual.get(month_key, 0) + 1
-
         if row["tripType"] == "parking":
             parking_count += 1
 

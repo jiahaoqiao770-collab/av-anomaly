@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 SEED = 42
-PROJECT_ROOT = Path("/home/qiaojiahao/projects/av-anomaly")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = PROJECT_ROOT / "data" / "synthetic" / "财务.csv"
 
 COLUMNS = [
@@ -30,14 +30,21 @@ COLUMNS = [
 ]
 
 # 每月总费用区间。8~11 月整体高于 6~7 月。
+# 每月总费用区间（万元）。整体上升，年末最高。
 TOTAL_COST_RANGES = {
-    7: (145.0, 165.0),
-    8: (180.0, 200.0),
-    9: (200.0, 220.0),
-    10: (220.0, 240.0),
-    11: (225.0, 245.0),
+    "2025-12": (128.0, 142.0),
+    "2026-01": (118.0, 132.0),
+    "2026-02": (110.0, 124.0),
+    "2026-03": (134.0, 148.0),
+    "2026-04": (140.0, 154.0),
+    "2026-05": (150.0, 166.0),
+    "2026-06": (150.0, 168.0),
+    "2026-07": (170.0, 192.0),
+    "2026-08": (195.0, 218.0),
+    "2026-09": (205.0, 232.0),
+    "2026-10": (218.0, 246.0),
+    "2026-11": (225.0, 248.0),
 }
-
 
 def split_total_cost(total: float, rng: random.Random) -> tuple[float, ...]:
     """把月度总费用拆为四项，并保证四项之和等于总费用。"""
@@ -54,18 +61,21 @@ def split_total_cost(total: float, rng: random.Random) -> tuple[float, ...]:
 
 def build_rows() -> list[dict[str, object]]:
     rng = random.Random(SEED)
+    rows: list[dict[str, object]] = []
 
-    # 6 月严格保留用户给出的数值。
-    rows: list[dict[str, object]] = [
-        {
-            "时间": "2026/6/1",
-            "外包服务费(万)": 120.4,
-            "车辆运维费(万)": 15.6,
-            "硬盘邮寄(万)": 2.1,
-            "场地测试(新增)(万)": 0.0,
-        }
-    ]
+    for month_key, (low, high) in TOTAL_COST_RANGES.items():
+        year, month = map(int, month_key.split("-"))
+        total = round(rng.uniform(low, high), 1)
+        outsourced, vehicle, shipping, site = split_total_cost(total, rng)
+        rows.append({
+            "时间": f"{year}/{month}/1",
+            "外包服务费(万)": outsourced,
+            "车辆运维费(万)": vehicle,
+            "硬盘邮寄(万)": shipping,
+            "场地测试(新增)(万)": site,
+        })
 
+    return rows
     for month in range(7, 12):
         low, high = TOTAL_COST_RANGES[month]
         total = round(rng.uniform(low, high), 1)
@@ -91,12 +101,16 @@ def row_total(row: dict[str, object]) -> float:
 
 
 def validate(rows: list[dict[str, object]]) -> None:
-    if len(rows) != 6:
-        raise AssertionError("财务表必须恰好包含 6 个月")
+    expected_count = len(TOTAL_COST_RANGES)
+    if len(rows) != expected_count:
+        raise AssertionError(f"财务表必须恰好包含 {expected_count} 个月")
     if list(rows[0]) != COLUMNS:
         raise AssertionError("财务表字段顺序错误")
 
-    expected_dates = [f"2026/{month}/1" for month in range(6, 12)]
+    expected_dates = [
+        f"{int(key.split('-')[0])}/{int(key.split('-')[1])}/1"
+        for key in TOTAL_COST_RANGES
+    ]
     if [str(row["时间"]) for row in rows] != expected_dates:
         raise AssertionError("月份范围或顺序错误")
 
@@ -107,15 +121,11 @@ def validate(rows: list[dict[str, object]]) -> None:
         if not 100.0 <= total <= 250.0:
             raise AssertionError(f"月度总费用不在 100~250 万：{row['时间']}")
 
-    early_average = sum(row_total(row) for row in rows[:2]) / 2
-    later_average = sum(row_total(row) for row in rows[2:]) / 4
+    half = expected_count // 2
+    early_average = sum(row_total(row) for row in rows[:half]) / half
+    later_average = sum(row_total(row) for row in rows[half:]) / half
     if later_average <= early_average:
-        raise AssertionError("8~11 月平均成本必须高于 6~7 月")
-
-    june = rows[0]
-    if [june[column] for column in COLUMNS[1:]] != [120.4, 15.6, 2.1, 0.0]:
-        raise AssertionError("6 月给定数据被修改")
-
+        raise AssertionError("下半年平均成本必须高于上半年")
 
 def write_csv(rows: list[dict[str, object]]) -> None:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
