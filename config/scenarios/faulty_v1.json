@@ -1,0 +1,47 @@
+{
+  "scenario_id": "faulty_v1",
+  "description": "在基线之上注入 3 类可控故障，用于评估规则集的召回与误报。",
+  "months": {
+    "2025-12": {"clips": 98000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-01": {"clips": 102000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-02": {"clips": 76000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-03": {"clips": 105000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-04": {"clips": 101000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-05": {"clips": 104000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-06": {"clips": 111000, "trial_ratio": 0.15, "cost_multiplier": 1.25},
+    "2026-07": {"clips": 99000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-08": {"clips": 95000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-09": {"clips": 103000, "trial_ratio": 0.40, "cost_multiplier": 1.00},
+    "2026-10": {"clips": 58000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-11": {"clips": 100000, "trial_ratio": 0.15, "cost_multiplier": 1.00}
+  },
+  "injected_faults": [
+    {
+      "fault_id": "F1-2026-06",
+      "month": "2026-06",
+      "type": "cost_spike",
+      "detail": "月度总成本整体上浮 25%",
+      "expected_rules": ["A11"],
+      "tolerated_rules": ["A01", "A02", "A04", "A10"],
+      "note": "成本上浮会连带推高单 Clip 成本，属合理连锁，不计误报。"
+    },
+    {
+      "fault_id": "F2-2026-10",
+      "month": "2026-10",
+      "type": "output_collapse",
+      "detail": "Clip 总数从 106000 降到 58000（-45%）",
+      "expected_rules": ["A07"],
+      "tolerated_rules": ["A01", "A02", "A05", "A06", "A08", "A09", "A10"],
+      "note": "产出塌陷会同时压低每小时 Clip 数、抬高单 Clip 成本。"
+    },
+    {
+      "fault_id": "F4-2026-09",
+      "month": "2026-09",
+      "type": "trial_spike",
+      "detail": "试采占比从 15% 涨到 40%",
+      "expected_rules": [],
+      "tolerated_rules": [],
+      "note": "当前规则集没有覆盖试采占比，这条是已知的覆盖缺口。"
+    }
+  ]
+}

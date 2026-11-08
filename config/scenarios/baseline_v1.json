@@ -1,0 +1,19 @@
+{
+  "scenario_id": "baseline_v1",
+  "description": "无注入的基线场景，与当前数据口径一致，用作对照组。",
+  "months": {
+    "2025-12": {"clips": 98000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-01": {"clips": 102000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-02": {"clips": 76000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-03": {"clips": 105000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-04": {"clips": 101000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-05": {"clips": 104000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-06": {"clips": 111000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-07": {"clips": 99000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-08": {"clips": 95000,  "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-09": {"clips": 103000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-10": {"clips": 106000, "trial_ratio": 0.15, "cost_multiplier": 1.00},
+    "2026-11": {"clips": 100000, "trial_ratio": 0.15, "cost_multiplier": 1.00}
+  },
+  "injected_faults": []
+}

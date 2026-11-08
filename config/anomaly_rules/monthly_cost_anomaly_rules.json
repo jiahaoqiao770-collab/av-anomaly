@@ -5,8 +5,8 @@
   "comparison": "previous_month",
   "calibration": {
     "source": "data/processed/monthly_clip_cost_metrics.csv",
-    "periods": "2026-06至2026-11",
-    "note": "基于6个月合成数据设定的初始阈值，新增月份后应重新校准。"
+    "periods": "2025-12至2026-11",
+    "note": "A03 绝对值阈值按业务预算设定（行车 70/88 元、泊车 12/15 元）；其余规则为环比类，与数据规模无关。"
   },
   "rules": [
     {
@@ -39,14 +39,14 @@
         {
           "metric": "driving_unit_clip_cost",
           "business_type": "行车",
-          "warning_threshold": 1100.0,
-          "critical_threshold": 1200.0
+          "warning_threshold": 70.0,
+          "critical_threshold": 88.0
         },
         {
           "metric": "parking_unit_clip_cost",
           "business_type": "泊车",
-          "warning_threshold": 250.0,
-          "critical_threshold": 275.0
+          "warning_threshold": 12.0,
+          "critical_threshold": 15.0
         }
       ],
       "unit": "元/Clip",
