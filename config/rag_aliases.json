@@ -1,0 +1,20 @@
+{
+  "K001": ["unit clip cost", "cost per clip", "单条成本", "每条成本", "单位采集成本"],
+  "K002": ["monthly total cost", "total cost", "总费用", "四项费用", "外包服务费", "车辆运维费", "硬盘邮寄费", "场地测试费"],
+  "K003": ["allocated cost", "cost allocation", "分摊成本", "摊销成本", "分摊额", "work hour ratio", "工时占比", "分摊比例", "分摊结构"],
+  "K004": ["clip count", "output volume", "数据量", "采集量", "记录数", "入库条数", "产出台数"],
+  "K005": ["clips per hour", "clips/hour", "throughput", "每小时产出", "单位工时产出", "小时产能", "采集效率"],
+  "K006": ["work hours up output down", "工时上涨", "人力投入", "无效工时", "idle time", "停机", "返工", "等待时间"],
+  "K007": ["work hour ratio", "driving parking ratio", "工时占比", "业务占比", "工时结构", "投放比例"],
+  "K008": ["unit cost ratio", "cost ratio", "成本比值", "差距扩大", "行车泊车对比", "差异倍数"],
+  "K009": ["trial clip ratio", "trial share", "effective unit cost", "nominal cost", "试采", "试采批次", "有效单成本", "名义成本", "试采占比"],
+  "K010": ["annotation", "annotation cost", "labeling", "标注外包", "标注成本", "标注单价", "返工率", "重标"],
+  "K011": ["HD map", "high definition map", "高精地图", "停车场地图", "语义地图", "场地首采", "地图版本"],
+  "K012": ["compliance", "audit", "合规审计", "脱敏", "数据安全", "整改", "一次性投入"],
+  "K013": ["GPU", "compute cost", "训练算力", "仿真算力", "云账单", "卡时"],
+  "K014": ["payment terms", "cash flow", "账期", "付款节奏", "季末付款", "settlement", "发票跨月"],
+  "K015": ["headcount", "headcount cost", "用工结构", "外包转自营", "用工人数", "人力口径", "编制"],
+  "K016": ["weather", "恶劣天气", "雨雪", "大雾", "采集窗口", "设备故障率", "复采"],
+  "K017": ["null rate", "missing value", "data completeness", "ETL", "空值率", "缺失率", "入库不全", "落库失败"],
+  "K018": ["caliber change", "restatement", "口径变更", "计价口径", "含税不含税", "跨月重算", "快照时点", "报表换版"]
+}

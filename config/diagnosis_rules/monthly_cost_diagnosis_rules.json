@@ -90,6 +90,12 @@
       "deduplication_key": "business_cost_ratio_up",
       "attach_to_business": true,
       "fallback_primary": true
+    },
+    "B02": {
+      "role": "driver",
+      "reason_priority": 85,
+      "deduplication_key": "trial_share_up",
+      "fallback_primary": true
     }
   }
 }

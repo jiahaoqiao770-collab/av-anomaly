@@ -39,9 +39,9 @@ QWEN_PATH = "/home/qiaojiahao/models/Qwen2.5-3B-Instruct"
 BGE_PATH = "/home/qiaojiahao/models/bge-small-zh-v1.5"
 INDEX_PATH = (
     PROJECT_ROOT
-    / "data/knowledge/vector_store/monthly_cost_troubleshooting_chroma"
+    / "data/knowledge/vector_store/monthly_cost_troubleshooting_chroma_v2"
 )
-COLLECTION_NAME = "monthly_cost_troubleshooting"
+COLLECTION_NAME = "monthly_cost_troubleshooting_v2"
 
 METRICS = {
     "monthly_total_cost": "月度总成本",
@@ -182,11 +182,15 @@ intent只能选择：
 1. “11月”应从可用月份中选择对应的完整月份。
 2. “上月、前一个月”不明确写baseline_period时可以为null。
 3. 用户没指定行车或泊车时，相关指标应同时选择行车和泊车。
-4. 不得输出YYYY-MM等占位符。5. “你好”“你是谁”“你能做什么”必须使用general_chat。
+4. 不得输出YYYY-MM等占位符。5. “你好”“你是谁”“你能做什么”必须使用general_chat；除此之外的任何闲聊都不是 general_chat。
 6. 与采集成本效率无关的问题使用unsupported。
+   判定标准：如果这个问题不需要本项目的数据、指标、异常、诊断或排查知识就能回答，就必须判 unsupported。
+   典型 unsupported：讲笑话、翻译、写代码、推荐书目、生活建议、天气、与成本无关的其他业务问题。
+   注意：把非业务闲聊判成 general_chat 是错误，unsupported 与 general_chat 不可混用。
 7. general_chat和unsupported的period、baseline_period、
    business_type必须为null，metric_ids必须为空数组。
 8. 缺少月份时不得自行猜测，period必须为null。
+9. 若问题不依赖项目数据即可回答（如讲笑话、翻译、写代码、推荐书），必须判 unsupported。
 
 示例：
 问题：11月Clip成本相对上月怎么样？
@@ -311,13 +315,43 @@ intent只能选择：
         collection = client.get_collection(
             name=COLLECTION_NAME
         )
-        results = collection.query(
-            query_embeddings=embedding,
-            n_results=2,
-        )
+        rule_ids: set[str] = set()
 
+        def _collect_rules(node, acc: set[str]) -> None:
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key == "triggered_rule_ids" and isinstance(value, list):
+                        acc.update(str(item) for item in value)
+                    else:
+                        _collect_rules(value, acc)
+            elif isinstance(node, list):
+                for item in node:
+                    _collect_rules(item, acc)
+
+        _collect_rules(state.get("query_result"), rule_ids)
+
+        query_kwargs = {
+            "query_embeddings": embedding,
+            "n_results": 2,
+            "include": ["metadatas", "documents", "distances"],
+        }
+        if rule_ids:
+            clauses = [
+                {"related_rule_ids": {"$contains": rule_id}}
+                for rule_id in sorted(rule_ids)
+            ]
+            clauses.append({"related_rule_ids": {"$contains": "*"}})
+            query_kwargs["where"] = {"$or": clauses}
+
+        results = collection.query(**query_kwargs)
+
+        documents = results["documents"][0]
+        metadatas = results["metadatas"][0]
         return {
-            "rag_knowledge": results["documents"][0]
+            "rag_knowledge": [
+                {"knowledge_id": meta["knowledge_id"], "content": doc}
+                for doc, meta in zip(documents, metadatas)
+            ]
         }
 
     def answer_node(state: AssistantState) -> AssistantState:
@@ -357,6 +391,7 @@ intent只能选择：
                     "RAG知识只是排查参考。"
                     "不得编造数值或已确认根因。"
                     "使用简洁中文直接回答。"
+                    "若参考了RAG知识，必须在回答最后单列一行：依据知识卡：K00x。"
                 ),
             },
             {
@@ -425,4 +460,4 @@ def main():
         print(result["answer"])
 
 if __name__ == "__main__":
-    main()
+    main() 
