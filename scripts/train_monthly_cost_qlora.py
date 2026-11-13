@@ -48,6 +48,24 @@ def parse_args():
         default=DEFAULT_OUTPUT_DIR,
         help="LoRA 输出目录，必须不存在或为空。",
     )
+    parser.add_argument(
+        "--data-path",
+        type=Path,
+        default=DATA_PATH,
+        help="训练数据 jsonl 路径。",
+    )
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=MAX_LENGTH,
+        help="单样本最大 token 数，超出直接报错不静默截断。",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=float,
+        default=1.0,
+        help="训练轮数。",
+    )
     return parser.parse_args()
 
 
@@ -60,10 +78,10 @@ def validate_output_dir(path):
             )
 
 
-def load_records():
+def load_records(data_path: Path = DATA_PATH):
     records = []
 
-    with DATA_PATH.open("r", encoding="utf-8") as file:
+    with data_path.open("r", encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
             if not line.strip():
                 continue
@@ -114,17 +132,10 @@ def load_records():
 
             records.append(record)
 
-    # 此脚本专门用于当前的 10 条数据试跑。
-    if len(records) != 10:
-        raise ValueError(
-            f"当前读取到 {len(records)} 条记录；"
-            "本次 smoke test 要求恰好 10 条。"
-        )
-
     return records
 
 
-def build_dataset(records, tokenizer):
+def build_dataset(records, tokenizer, max_length: int = MAX_LENGTH):
     rows = []
     lengths = []
 
@@ -161,10 +172,10 @@ def build_dataset(records, tokenizer):
         lengths.append(length)
 
         # 拒绝静默截断，避免回答部分被截掉。
-        if length > MAX_LENGTH:
+        if length > max_length:
             raise ValueError(
                 f"第 {index} 条有 {length} 个 token，"
-                f"超过上限 {MAX_LENGTH}。请先检查样本。"
+                f"超过上限 {max_length}。请先检查样本。"
             )
 
         rows.append(
@@ -191,7 +202,7 @@ def main():
         )
 
     validate_output_dir(args.output_dir)
-    records = load_records()
+    records = load_records(args.data_path)
 
     tokenizer = AutoTokenizer.from_pretrained(
         str(MODEL_PATH),
@@ -202,10 +213,10 @@ def main():
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    dataset = build_dataset(records, tokenizer)
+    dataset = build_dataset(records, tokenizer, args.max_length)
 
     print(f"基座模型：{MODEL_PATH}")
-    print(f"训练数据：{DATA_PATH}")
+    print(f"训练数据：{args.data_path}")
     print(f"有效样本：{len(dataset)}")
     print(f"输出目录：{args.output_dir}")
 
@@ -218,7 +229,7 @@ def main():
         raise RuntimeError("CUDA 不可用，停止训练。")
 
     print(f"\nGPU：{torch.cuda.get_device_name(0)}")
-    print("开始训练：1 epoch，batch size 1。")
+    print(f"开始训练：{args.epochs} epoch，batch size 1，梯度累积 4。")
 
     set_seed(42)
     torch.cuda.reset_peak_memory_stats(0)
@@ -250,7 +261,7 @@ def main():
     training_args = SFTConfig(
         output_dir=str(args.output_dir),
 
-        num_train_epochs=1,
+        num_train_epochs=args.epochs,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
 
@@ -258,7 +269,7 @@ def main():
         lr_scheduler_type="constant",
         warmup_steps=0,
 
-        max_length=MAX_LENGTH,
+        max_length=args.max_length,
         packing=False,
         completion_only_loss=True,
 

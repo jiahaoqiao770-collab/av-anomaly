@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -42,6 +43,23 @@ INDEX_PATH = (
     / "data/knowledge/vector_store/monthly_cost_troubleshooting_chroma_v2"
 )
 COLLECTION_NAME = "monthly_cost_troubleshooting_v2"
+
+EXTRA_PLAN_RULES = """
+补充硬规则：
+15. 可用指标只有上面列出的那些，不得用最接近的指标顶替。
+    以下类型一律判 unsupported（系统里没有对应指标）：
+    采集天数、车辆数、人数、费用分项（外包费/运维费/邮寄费各是多少）、
+    季度合计、半年合计、年度累计、同比、平均值。
+16. 判 unsupported 时也必须输出完整 JSON，不得只输出一个词。
+"""
+
+EXTRA_ANSWER_RULES = """
+补充要求：
+- 变化率必须写成百分比（15.96%），不得写 0.1596。
+- 用户问涨了多少，必须给出变化量或变化率，不能只给当期值。
+- 不得把用户的问题原样复述当回答。
+- 若查询结果不为空，必须逐条列出每条异常的规则名，严禁说「没有异常」。
+"""
 
 METRICS = {
     "monthly_total_cost": "月度总成本",
@@ -150,6 +168,7 @@ def build_graph(tokenizer, model):
     )
 
     def plan_node(state: AssistantState) -> AssistantState:
+        # 补充规则在下面 prompt 构造完成后拼接
         prompt = f"""
 你是数据查询计划器，只输出JSON。
 
@@ -191,7 +210,22 @@ intent只能选择：
    business_type必须为null，metric_ids必须为空数组。
 8. 缺少月份时不得自行猜测，period必须为null。
 9. 若问题不依赖项目数据即可回答（如讲笑话、翻译、写代码、推荐书），必须判 unsupported。
+10. 指标歧义：Clip数/clips数量/采集量 一律用 *_clip_count，不得用 *_clips_per_hour；
+10b. 【P2-FIX】英文写法同样适用：clips / clip count / clip数量 指 *_clip_count；
+     clips per hour / clip per hour 才指 *_clips_per_hour。
+    每小时Clip数/clips per hour/产能 才用 *_clips_per_hour。
+11. 用户提到三个月及以上时，只取最近两个月，intent 用 compare_metric，
+    并在回答开头说明“本次仅对比了 X 月与 Y 月”，不得假装支持多月。
+12. 问句出现 增长/下降/变化/有没有涨/涨了多少/对比/分别 时，intent 必须是 compare_metric，
+    能确定两个月就填 period（较晚）与 baseline_period（较早）；不确定就都填 null。
 
+14. 【P1-FIX】数据的月份范围是 2025-12 到 2026-11，最新月份固定为 2026-11。
+    “上个月”= 2026-10，“这个月/本月”= 2026-11，“去年12月”= 2025-12。
+    严禁把“上个月”解析成 2026-01 或其他月份。
+13. 【P0-FIX】无论任何问题，都必须输出完整 JSON 对象，不得只输出一个单词。
+    即使判断为无关问题，也要输出：
+    {{"intent":"unsupported","period":null,"baseline_period":null,"business_type":null,"metric_ids":[]}}
+    输出必须以 {{ 开头、以 }} 结尾，不得包含解释文字。
 示例：
 问题：11月Clip成本相对上月怎么样？
 输出：
@@ -200,6 +234,7 @@ intent只能选择：
 "metric_ids":["driving_unit_clip_cost","parking_unit_clip_cost"]}}
 """
 
+        prompt = prompt + EXTRA_PLAN_RULES
         result = call_qwen(
             tokenizer,
             model,
@@ -222,9 +257,23 @@ intent只能选择：
 
         plan = state["plan"]
         intent = plan.get("intent")
+        _intent_alias = {
+            "explain_anomaly": "explain_diagnosis",
+            "explain_anomalies": "explain_diagnosis",
+            "diagnose": "explain_diagnosis",
+            "anomaly": "get_anomalies",
+            "anomalies": "get_anomalies",
+        }
+        intent = _intent_alias.get(intent, intent)
         period = plan.get("period")
         business_type = plan.get("business_type")
+        _biz = {"parking": "泊车", "driving": "行车", "overall": "整体"}
+        if business_type:
+            business_type = _biz.get(str(business_type).lower(), business_type)
         metric_ids = plan.get("metric_ids") or []
+        unknown = [m for m in metric_ids if m not in METRICS]
+        if unknown:
+            return {"error": f"系统没有这些指标：{'、'.join(unknown)}。"}
 
         try:
             if intent in {"general_chat", "unsupported"}:
@@ -266,19 +315,27 @@ intent只能选择：
                     result.append(comparison)
 
             elif intent == "get_anomalies":
-                result = get_anomalies(
-                    month=period,
-                    business_type=business_type,
-                )
+                if business_type:
+                    result = get_anomalies(month=period, business_type=business_type)
+                else:
+                    result = []
+                    for biz in ("行车", "泊车", "整体"):
+                        result = result + list(
+                            get_anomalies(month=period, business_type=biz) or []
+                        )
 
             elif intent in {
                 "explain_diagnosis",
                 "generate_report",
             }:
-                result = get_diagnoses(
-                    month=period,
-                    business_type=business_type,
-                )
+                if business_type:
+                    result = get_diagnoses(month=period, business_type=business_type)
+                else:
+                    result = []
+                    for biz in ("行车", "泊车", "整体"):
+                        result = result + list(
+                            get_diagnoses(month=period, business_type=biz) or []
+                        )
 
             elif intent == "troubleshooting":
                 result = []
@@ -392,13 +449,17 @@ intent只能选择：
                     "不得编造数值或已确认根因。"
                     "使用简洁中文直接回答。"
                     "若参考了RAG知识，必须在回答最后单列一行：依据知识卡：K00x。"
+                    "若用户询问增长或下降而查询结果只有单月数据，必须明确说明缺少对比月份、无法判断。"
+                    "变化率必须用百分比表述（例如 15.96%），不得输出 0.1596 这种小数。"
+                    "用户问涨了多少时，必须给出变化量或变化率，不能只给当期绝对值。"
+                    "不得把用户的问题原样复述一遍当作回答。"
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    f"用户问题：{state['question']}\n\n"
-                    "查询上下文：\n"
+                    f"用户问题：{state['question']}\n"
+                    "事实数据："
                     + json.dumps(
                         context,
                         ensure_ascii=False,
@@ -408,11 +469,12 @@ intent只能选择：
             },
         ]
 
+        messages[0]["content"] = messages[0]["content"] + EXTRA_ANSWER_RULES
         answer = call_qwen(
             tokenizer,
             model,
             messages,
-            600,
+            350,
         )
         return {"answer": answer}
 
@@ -432,8 +494,18 @@ intent只能选择：
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--adapter", default=None, help="LoRA adapter 目录，不填用 base")
+    args = parser.parse_args()
+
     print("正在加载Qwen模型……")
     tokenizer, model = load_qwen()
+    if args.adapter:
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, args.adapter)
+        print(f"已加载 LoRA：{args.adapter}")
+
     assistant = build_graph(tokenizer, model)
 
     print("模型加载完成。输入 exit 退出。")
@@ -454,6 +526,7 @@ def main():
             print("知道！她就是奶婷，是著名顶顶的奶龙之女")
             continue
 
+        torch.cuda.empty_cache()
         result = assistant.invoke({"question": question})
 
         print("\n===== 回答 =====")
